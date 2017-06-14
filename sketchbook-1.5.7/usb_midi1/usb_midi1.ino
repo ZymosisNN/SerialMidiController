@@ -1,8 +1,12 @@
 #include <EEPROM.h>
+#include <Bounce2.h>
+#include "config.h"
 
 int knobLastVal = 0;
 int lastBtnState = HIGH;
 const int ADDR = 0;
+
+int pedalMode = MODE_VOL;
 
 struct Borders
 {
@@ -10,23 +14,40 @@ struct Borders
   int hi = 1024;
 } borders;
 
+Bounce btn_calib = Bounce(); 
+Bounce btn_wah_en = Bounce(); 
+Bounce btn_pitch_en = Bounce(); 
+
+
 void setup() {
   Serial.begin(115200);
 //  while(!Serial);
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(CALIB_PIN, INPUT_PULLUP);
+  pinMode(WAH_EN_PIN, INPUT_PULLUP);
+  pinMode(PITCH_EN_PIN, INPUT_PULLUP);
   pinMode(PEDAL_PIN, INPUT);
 
-  EEPROM.get(ADDR, borders);
+  readBorders();
 
+  btn_calib.attach(CALIB_PIN);
+  btn_calib.interval(5);
+  btn_wah_en.attach(WAH_EN_PIN);
+  btn_wah_en.interval(5);
+  btn_pitch_en.attach(PITCH_EN_PIN);
+  btn_pitch_en.interval(5);
 
 }
 
 void loop() {
   
-  
-  // Calibrate button
-  if (digitalRead(CALIB_PIN) == LOW)
+  // Update the Bounce instances :
+  btn_calib.update();
+  btn_wah_en.update();
+  btn_pitch_en.update();
+
+  // Get the updated value :
+  if (btn_calib.read() == LOW)
   {
     if (lastBtnState == HIGH)
     {
@@ -67,25 +88,32 @@ void indicate(int n, int out)
 void calibrate()
 {
   indicate(5, HIGH);
-
-  while(digitalRead(calibPin) == HIGH)
+  while(digitalRead(CALIB_PIN) == HIGH)
   {
-    borders.lo = analogRead(knobPin);
+    borders.lo = analogRead(PEDAL_PIN);
   }
-
   indicate(3, HIGH);
-
-  while(digitalRead(calibPin) == HIGH)
+  while(digitalRead(CALIB_PIN) == HIGH)
   {
-    borders.hi = analogRead(knobPin);
+    borders.hi = analogRead(PEDAL_PIN);
   }
-
   indicate(2, LOW);
-
-  EEPROM.put(ADDR, borders);
-
+  saveBorders();
 }
 
+void saveBorders()
+{
+  EEPROM.write(ADDR,   highByte(borders.lo));
+  EEPROM.write(ADDR+1, lowByte(borders.lo));
+  EEPROM.write(ADDR+2, highByte(borders.hi));
+  EEPROM.write(ADDR+3, lowByte(borders.hi));
+}
+
+void readBorders()
+{
+  borders.lo = word(EEPROM.read(ADDR), EEPROM.read(ADDR+1));
+  borders.hi = word(EEPROM.read(ADDR+2), EEPROM.read(ADDR+3));
+}
 
 
 // First parameter is the event type (0x09 = note on, 0x08 = note off).
